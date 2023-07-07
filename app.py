@@ -2,6 +2,11 @@ import streamlit as st
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 from langchain.text_splitter import CharacterTextSplitter
+from langchain.embeddings import HuggingFaceInstructEmbeddings
+from langchain.vectorstores import FAISS
+from langchain.memory import ConversationBufferMemory
+from langchain.chains import ConversationalRetrievalChain
+from langchain.chat_models import ChatOpenAI
 
 def get_text_from_pdf(docs):
     """
@@ -13,7 +18,6 @@ def get_text_from_pdf(docs):
         for page in pdf_reader.pages:
             text += page.extract_text()
     return text
-
 
 def get_text_chunk(text):
     """
@@ -29,11 +33,30 @@ def get_text_chunk(text):
     chunks = text_splitter.split_text(text)
     return chunks
 
+def get_vector_store(split_text):
+    embeddings = HuggingFaceInstructEmbeddings(model_name="hkunlp/instructor-xl")
+    vector_store = FAISS.from_texts(texts=split_text,embedding=embeddings)
+    pass
+
+def get_conversation_chain(vector_store):
+    llm = ChatOpenAI()
+    memory = ConversationBufferMemory(memory_key='chat_history',return_messages=True)
+    chain = ConversationalRetrievalChain.from_llm(
+        llm=llm,
+        retriever=vector_store.as_retriever(),
+        memory=memory
+    )
+    return chain
+
+
 def main():
     load_dotenv()
     st.set_page_config(page_title="NLP-PDFs-LangChain",page_icon=":notebook_with_decorative_cover:")
     st.header("NLP-PDFs-LangChain :ledger:")
     st.text_input("Ask questions to the PDFs")
+
+    if "conversation" not in st.session_state:
+        st.session_state.conversation = None
 
     with st.sidebar:
         st.subheader("Documents")
@@ -45,6 +68,10 @@ def main():
                 raw_text = get_text_from_pdf(docs)
                 # st.write(raw_text)
                 split_text = get_text_chunk(raw_text)
+
+                vector_store = get_vector_store(split_text)
+
+                st.session_state.conversation = get_conversation_chain(vector_store)
 
 if __name__=='__main__':
     main()
